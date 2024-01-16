@@ -500,8 +500,8 @@ imported_keys = [gpg.import_keys_file(key_file) for key_file in key_files]
 # Set trust for imported keys
 for key in imported_keys:
     keyid = key.fingerprints[0]
-    gpg.trust_keys(keyid, 'TRUST_FULLY')
-    print(f'GPG key imported and trusted: {keyid}')
+    trust_result = gpg.trust_keys([keyid], 'TRUST_ULTIMATE')
+    print(f'GPG key imported and trusted: {keyid} => {trust_result}')
 
 # Get the fingerprints of the imported keys
 key_fingerprints = [result.fingerprints[0] for result in imported_keys]
