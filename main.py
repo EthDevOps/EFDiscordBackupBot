@@ -492,8 +492,16 @@ print('EF Backup Bot starting...')
 # prepare gpg
 gpg = GPG()
 
+print('Loading GPG keys...')
 key_files = glob.glob(os.path.join(GPG_KEY_DIR,'*.asc'))
 imported_keys = [gpg.import_keys_file(key_file) for key_file in key_files]
+
+# Trust keys
+# Set trust for imported keys
+for key in imported_keys:
+    keyid = key.fingerprints[0]
+    gpg.trust_keys(keyid, 'TRUST_FULLY')
+    print(f'GPG key imported and trusted: {keyid}')
 
 # Get the fingerprints of the imported keys
 key_fingerprints = [result.fingerprints[0] for result in imported_keys]
