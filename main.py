@@ -324,7 +324,7 @@ async def backup_channel(channel, last_message_id):
             print(f'No manifest for {channel.guild.id} - {channel.id}. Likly empty channel. Skipping S3 upload.')
 
     if after is None:
-        return -1
+        return None
     return after.id
 
 
@@ -550,7 +550,8 @@ if __name__ == '__main__':
             # Backup channels
             last_msg_id = await get_last_message_id(channel)
             new_last_msg_id = await backup_channel(channel, last_msg_id)
-            await set_last_message_id(channel, new_last_msg_id)
+            if last_msg_id is not None:
+                await set_last_message_id(channel, new_last_msg_id)
 
             # Backup threads in channel
             for thread in channel.threads:
@@ -558,7 +559,8 @@ if __name__ == '__main__':
 
                 last_msg_id = await get_last_message_id(thread)
                 new_last_msg_id = await backup_channel(thread, last_msg_id)
-                await set_last_message_id(thread, new_last_msg_id)
+                if new_last_msg_id is not None:
+                    await set_last_message_id(thread, new_last_msg_id)
 
         # Quit when done
         print('Notifying the heartbeat check...')
