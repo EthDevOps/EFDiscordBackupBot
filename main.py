@@ -35,6 +35,14 @@ S3_ENDPOINT = os.getenv('S3_ENDPOINT')
 
 HEARTBEAT_URL = os.getenv('HEARTBEAT_URL')
 
+# Send a start signal to heartbeat
+try:
+    requests.get(HEARTBEAT_URL + "/start", timeout=5)
+except requests.exceptions.RequestException:
+    # If the network request fails for any reason, we don't want
+    # it to prevent the main job from running
+    pass
+
 # Prepare discord connection
 intents = nextcord.Intents.default()
 intents.message_content = True
@@ -485,7 +493,13 @@ async def on_ready():
 
     # Quit when done
     print('Notifying the heartbeat check...')
-    requests.get(HEARTBEAT_URL)
+    try:
+        requests.get(HEARTBEAT_URL, timeout=10)
+    except requests.exceptions.RequestException:
+        # If the network request fails for any reason, we don't want
+        # it to prevent the main job from running
+        pass
+
     print('Done. exiting.')
     await client.close()
 
