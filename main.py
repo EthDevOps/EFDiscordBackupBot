@@ -317,8 +317,11 @@ async def backup_channel(channel, last_message_id):
     if is_s3_enabled():
         # upload manifest and seal
         manifest_seal_path, s3_manifest_seal_path = get_manifest_seal_path(channel.guild.id, channel.id)
-        S3_CLIENT.upload_file(manifest_path, s3_bucket(), s3_manifest_path)
-        S3_CLIENT.upload_file(manifest_seal_path, s3_bucket(), s3_manifest_seal_path)
+        if os.path.exists(manifest_path):
+            S3_CLIENT.upload_file(manifest_path, s3_bucket(), s3_manifest_path)
+            S3_CLIENT.upload_file(manifest_seal_path, s3_bucket(), s3_manifest_seal_path)
+        else:
+            print(f'No manifest for {guild_id} - {channel_id}. Likly empty channel. Skipping S3 upload.')
 
     return after.id
 
