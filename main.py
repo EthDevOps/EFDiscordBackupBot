@@ -323,7 +323,10 @@ async def backup_channel(channel, last_message_id):
         else:
             print(f'No manifest for {channel.guild.id} - {channel.id}. Likly empty channel. Skipping S3 upload.')
 
-    return after.id
+    if after is None:
+        return -1
+    else:
+        return after.id
 
 
 def get_loc_path(channel):
