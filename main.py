@@ -1,22 +1,33 @@
+import base64
+import csv
 import glob
+import hashlib
+import json
 import os
 from datetime import datetime
-import nextcord
-import hashlib
 import requests
-import base64
-import json
-from gnupg import GPG
+import boto3
+import nextcord
+from botocore.exceptions import ClientError
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ed25519
-import csv
-import boto3
-from botocore.exceptions import ClientError
+from gnupg import GPG
 
-global S3_BUCKET
-S3_ENABLED = False
 key_fingerprints = []
 gpg = GPG()
+S3_CLIENT = None
+SIGNING_KEY = None
+
+class ConfigurationError(Exception):
+    def __init__(self, message):
+        super().__init__(message)
+        self.message = message
+
+
+class CryptographyError(Exception):
+    def __init__(self, message):
+        super().__init__(message)
+        self.message = message
 
 
 def get_ephemeral_path():
@@ -26,37 +37,42 @@ def get_ephemeral_path():
     return ephemeral_path
 
 
+def is_s3_enabled():
+    return os.getenv('S3_ENABLED') == '1'
+
+
+def s3_bucket():
+    return os.getenv('S3_BUCKET')
+
+
 def init_s3():
     # Read Env
-    S3_ENABLED = os.getenv('S3_ENABLED') == '1'
-    S3_BUCKET = os.getenv('S3_BUCKET')
-    S3_ACCESS_KEY = os.getenv('S3_ACCESS_KEY')
-    S3_SECRET_KEY = os.getenv('S3_SECRET_KEY')
-    S3_ENDPOINT = os.getenv('S3_ENDPOINT')
+    s3_access_key = os.getenv('S3_ACCESS_KEY')
+    s3_secret_key = os.getenv('S3_SECRET_KEY')
+    s3_endpoint = os.getenv('S3_ENDPOINT')
 
     # Setup
-    if S3_ENABLED:
+    if is_s3_enabled():
         # Prepare S3 access
-        if S3_BUCKET is None:
-            raise Exception('S3 enabled but S3_BUCKET not set.')
+        if s3_bucket() is None:
+            raise ConfigurationError('S3 enabled but S3_BUCKET not set.')
 
-        if S3_ACCESS_KEY is None:
-            raise Exception('S3 enabled but S3_ACCESS_KEY not set.')
+        if s3_access_key is None:
+            raise ConfigurationError('S3 enabled but S3_ACCESS_KEY not set.')
 
-        if S3_SECRET_KEY is None:
-            raise Exception('S3 enabled but S3_SECRET_KEY not set.')
+        if s3_secret_key is None:
+            raise ConfigurationError('S3 enabled but S3_SECRET_KEY not set.')
 
-        if S3_ENDPOINT is None:
-            raise Exception('S3 enabled but S3_ENDPOINT not set.')
+        if s3_endpoint is None:
+            raise ConfigurationError('S3 enabled but S3_ENDPOINT not set.')
 
         return boto3.client(
             service_name='s3',
-            aws_access_key_id=S3_ACCESS_KEY,
-            aws_secret_access_key=S3_SECRET_KEY,
-            endpoint_url=S3_ENDPOINT,
+            aws_access_key_id=s3_access_key,
+            aws_secret_access_key=s3_secret_key,
+            endpoint_url=s3_endpoint,
         )
-    else:
-        return None
+    return None
 
 
 def hash_string(msg):
@@ -85,7 +101,7 @@ def extract_message(message):
     # process any attachments/files
     for attach in message.attachments:
         # Download file
-        resp = requests.get(attach.url)
+        resp = requests.get(attach.url, timeout=30)
         resp.raise_for_status()
 
         attachments.append({
@@ -134,25 +150,26 @@ def write_to_storage(backup_msg):
 
     if not enc_msg.ok:
         print(f'Encryption failed: {enc_msg.status}')
-        raise Exception('Unable to encrypt')
+        raise CryptographyError('Unable to encrypt')
 
     # hash and sign msg
     enc_hash_str, enc_hash_b = hash_string(str(enc_msg))
-    signature = signing_key.sign(enc_hash_b).hex()
+    signature = SIGNING_KEY.sign(enc_hash_b).hex()
 
     manifest_path, _ = get_manifest_path(backup_msg["server"]["id"], backup_msg["channel"]["id"])
 
     # Write to manifest
-    with open(manifest_path, 'a') as manifest_file:
+    with open(manifest_path, 'a', encoding='utf-8') as manifest_file:
         writer = csv.writer(manifest_file)
         # Date/Time of message, msg hash, signature
         writer.writerow([backup_msg['created_at'], enc_hash_str, signature])
 
     # write to msg file
-    if S3_ENABLED:
-        s3.put_object(Bucket=S3_BUCKET, Key=f'messages/{enc_hash_str}', Body=str(enc_msg))
+    if is_s3_enabled():
+        S3_CLIENT.put_object(Bucket=s3_bucket(), Key=f'messages/{enc_hash_str}', Body=str(enc_msg))
     else:
-        with open(os.path.join(get_ephemeral_path(), f'{enc_hash_str}.msg'),'w') as msg_file:
+        msg_path = os.path.join(get_ephemeral_path(), f'{enc_hash_str}.msg')
+        with open(msg_path,'w', encoding='utf-8') as msg_file:
             msg_file.write(str(enc_msg))
     print(f'Message written: {enc_hash_str}')
 
@@ -166,11 +183,11 @@ def get_signing_key():
     keyfile = os.getenv('SIGN_KEY_PEM')
 
     if keyfile is None:
-        raise Exception('Signing key not configured. Please set SIGN_KEY_PEM.')
+        raise ConfigurationError('Signing key not configured. Please set SIGN_KEY_PEM.')
 
     # Verify file extension
     if os.path.splitext(keyfile)[1] != '.pem':
-        raise Exception('Signing key file not a pem file. make sure the extension is pem.')
+        raise ConfigurationError('Signing key file not a pem file. make sure the extension is pem.')
 
     if os.path.exists(keyfile):
         print(f'Loading signing key from {keyfile}...')
@@ -194,7 +211,7 @@ def get_signing_key():
                 private_key.private_bytes(
                     encoding=serialization.Encoding.PEM,
                     format=serialization.PrivateFormat.PKCS8,
-                    encryption_algorithm=serialization.NoEncryption()  # Change this if you want the key to be encrypted
+                    encryption_algorithm=serialization.NoEncryption()
                 )
             )
 
@@ -212,7 +229,8 @@ def get_signing_key():
 
 def seal_manifest(guild_id, channel_id):
     """
-    This method seals the manifest file for a guild and channel by hashing the IDs, loading the manifest contents,
+    This method seals the manifest file for a guild and channel by hashing the IDs,
+    loading the manifest contents,
     generating a signature for the manifest, and writing the signature to a seal file.
 
     :param guild_id: the ID of the guild
@@ -223,24 +241,26 @@ def seal_manifest(guild_id, channel_id):
     seal_path = manifest_path.replace('.manifest','.seal')
 
     # load the manifest contents
-    with open(manifest_path, 'r') as manifest:
+    with open(manifest_path, 'r', encoding='utf-8') as manifest:
         man_str = manifest.read()
         _, manifest_hash = hash_string(man_str)
-        man_signature = signing_key.sign(manifest_hash).hex()
-        with open(seal_path, 'w') as seal_file:
+        man_signature = SIGNING_KEY.sign(manifest_hash).hex()
+        with open(seal_path, 'w', encoding='utf-8') as seal_file:
             seal_file.write(man_signature)
 
 
 def get_manifest_path(guild_id, channel_id):
     channel_hash, _ = hash_string(str(channel_id))
     guild_hash, _ = hash_string(str(guild_id))
-    return os.path.join(get_ephemeral_path(), f'{guild_hash}-{channel_hash}.manifest'), f'manifests/{guild_hash}-{channel_hash}'
+    return (os.path.join(get_ephemeral_path(), f'{guild_hash}-{channel_hash}.manifest'),
+            f'manifests/{guild_hash}-{channel_hash}')
 
 
 def get_manifest_seal_path(guild_id, channel_id):
     channel_hash, _ = hash_string(str(channel_id))
     guild_hash, _ = hash_string(str(guild_id))
-    return os.path.join(get_ephemeral_path(), f'{guild_hash}-{channel_hash}.seal'), f'manifests/seals/{guild_hash}-{channel_hash}'
+    return (os.path.join(get_ephemeral_path(), f'{guild_hash}-{channel_hash}.seal'),
+            f'manifests/seals/{guild_hash}-{channel_hash}')
 
 
 async def backup_channel(channel, last_message_id):
@@ -259,10 +279,12 @@ async def backup_channel(channel, last_message_id):
     # download manifest from S3
     manifest_path, s3_manifest_path = get_manifest_path(channel.guild.id, channel.id)
 
-    if S3_ENABLED:
+    if is_s3_enabled():
         try:
-            s3.head_object(Bucket=S3_BUCKET, Key=s3_manifest_path)
-            s3.download_file(Bucket=S3_BUCKET, Filename=manifest_path, Key=s3_manifest_path)
+            S3_CLIENT.head_object(Bucket=s3_bucket(), Key=s3_manifest_path)
+            S3_CLIENT.download_file(Bucket=s3_bucket(),
+                                    Filename=manifest_path,
+                                    Key=s3_manifest_path)
         except ClientError as e:
             if e.response['Error']['Code'] == '404':
                 # The object does not exist.
@@ -288,11 +310,11 @@ async def backup_channel(channel, last_message_id):
     seal_manifest(channel.guild.id, channel.id)
 
     # upload to S3
-    if S3_ENABLED:
+    if is_s3_enabled():
         # upload manifest and seal
         manifest_seal_path, s3_manifest_seal_path = get_manifest_seal_path(channel.guild.id, channel.id)
-        s3.upload_file(manifest_path, S3_BUCKET, s3_manifest_path)
-        s3.upload_file(manifest_seal_path, S3_BUCKET, s3_manifest_seal_path)
+        S3_CLIENT.upload_file(manifest_path, s3_bucket(), s3_manifest_path)
+        S3_CLIENT.upload_file(manifest_seal_path, s3_bucket(), s3_manifest_seal_path)
 
     return after.id
 
@@ -306,7 +328,8 @@ def get_loc_path(channel):
     """
     guild_hash, _ = hash_string(str(channel.guild.id))
     channel_hash, _ = hash_string(str(channel.id))
-    return os.path.join(get_ephemeral_path(), f'{guild_hash}-{channel_hash}.loc'), f'locations/{guild_hash}-{channel_hash}'
+    return (os.path.join(get_ephemeral_path(), f'{guild_hash}-{channel_hash}.loc'),
+            f'locations/{guild_hash}-{channel_hash}')
 
 
 async def get_last_message_id(channel):
@@ -322,18 +345,17 @@ async def get_last_message_id(channel):
     loc_path, loc_s3_path = get_loc_path(channel)
 
     # If S3 is enabled go directly to S3
-    if S3_ENABLED:
+    if is_s3_enabled():
         try:
-            loc_obj = s3.get_object(Bucket=S3_BUCKET, Key=loc_s3_path)
+            loc_obj = S3_CLIENT.get_object(Bucket=s3_bucket(), Key=loc_s3_path)
             initial_content = loc_obj['Body'].read().decode()
             last_msg_id = int(initial_content)
         except ClientError:
             print("The location is non existent on S3.")
-            pass
 
     else:
         if os.path.exists(loc_path):
-            with open(loc_path, 'r') as f:
+            with open(loc_path, 'r', encoding='utf-8') as f:
                 f_content = f.read()
                 last_msg_id = int(f_content)
     return last_msg_id
@@ -348,10 +370,10 @@ async def set_last_message_id(channel, new_last_msg_id):
     :return: None
     """
     loc_path, loc_s3_path = get_loc_path(channel)
-    if S3_ENABLED:
-        s3.put_object(Bucket=S3_BUCKET, Key=loc_s3_path, Body=str(new_last_msg_id))
+    if is_s3_enabled():
+        S3_CLIENT.put_object(Bucket=s3_bucket(), Key=loc_s3_path, Body=str(new_last_msg_id))
     else:
-        with open(loc_path, "w") as file:
+        with open(loc_path, "w", encoding='utf-8') as file:
             file.write(str(new_last_msg_id))
 
 
@@ -409,33 +431,33 @@ def generate_directory_file(target_channels, current_datetime):
 
     if not enc_msg.ok:
         print(f'Encryption failed: {enc_msg.status}')
-        raise Exception('Unable to encrypt')
+        raise CryptographyError('Unable to encrypt')
 
     # Write directory to storage
-    if S3_ENABLED:
-        s3.put_object(Bucket=S3_BUCKET, Key=f'directories/{iso8601_format}', Body=str(enc_msg))
+    if is_s3_enabled():
+        S3_CLIENT.put_object(Bucket=s3_bucket(), Key=f'directories/{iso8601_format}', Body=str(enc_msg))
     else:
-        with open(os.path.join(get_ephemeral_path(), f'{iso8601_format}.dir'), 'w') as file:
+        with open(os.path.join(get_ephemeral_path(), f'{iso8601_format}.dir'), 'w', encoding='utf-8') as file:
             file.write(str(enc_msg))
 
     # generate seal
     _, manifest_hash = hash_string(str(enc_msg))
-    man_signature = signing_key.sign(manifest_hash).hex()
+    man_signature = SIGNING_KEY.sign(manifest_hash).hex()
 
     # write the directory to storage
-    if S3_ENABLED:
-        s3.put_object(Bucket=S3_BUCKET, Key=f'directories/seals/{iso8601_format}', Body=man_signature)
+    if is_s3_enabled():
+        S3_CLIENT.put_object(Bucket=s3_bucket(), Key=f'directories/seals/{iso8601_format}', Body=man_signature)
     else:
-        with open(os.path.join(get_ephemeral_path(), f'{iso8601_format}.dirseal'), 'w') as seal_file:
+        with open(os.path.join(get_ephemeral_path(), f'{iso8601_format}.dirseal'), 'w', encoding='utf-8') as seal_file:
             seal_file.write(man_signature)
 
 
 def load_gpg_keys():
     print('Loading GPG keys...')
-    GPG_KEY_DIR = os.getenv('GPG_KEY_DIR')
-    if GPG_KEY_DIR is None:
-        raise Exception('No GPG key directory set. Please set GPG_KEY_DIR.')
-    key_files = glob.glob(os.path.join(GPG_KEY_DIR, '*.asc'))
+    gpg_key_dir = os.getenv('GPG_KEY_DIR')
+    if gpg_key_dir is None:
+        raise ConfigurationError('No GPG key directory set. Please set GPG_KEY_DIR.')
+    key_files = glob.glob(os.path.join(gpg_key_dir, '*.asc'))
     imported_keys = [gpg.import_keys_file(key_file) for key_file in key_files]
 
     # Trust keys
@@ -449,6 +471,24 @@ def load_gpg_keys():
     return [result.fingerprints[0] for result in imported_keys]
 
 
+def send_heartbeat(start=False):
+    url = os.getenv('HEARTBEAT_URL')
+
+    if url is None:
+        print('No HEARTBEAT_URL set. Monitoring disabled.')
+        return
+
+    if start:
+        url = url + '/start'
+    # Send a start signal to heartbeat
+    try:
+        requests.get(url, timeout=5)
+    except requests.exceptions.RequestException:
+        # If the network request fails for any reason, we don't want
+        # it to prevent the main job from running
+        pass
+
+
 if __name__ == '__main__':
     # Main starting
     print('EF Backup Bot starting...')
@@ -456,26 +496,18 @@ if __name__ == '__main__':
     # Read config from env
     TOKEN = os.getenv('DISCORD_TOKEN')
     if TOKEN is None:
-        raise Exception('No discord token set. Please set DISCORD_TOKEN.')
+        raise ConfigurationError('No discord token set. Please set DISCORD_TOKEN.')
 
-    HEARTBEAT_URL = os.getenv('HEARTBEAT_URL')
-
-    # Send a start signal to heartbeat
-    try:
-        requests.get(HEARTBEAT_URL + "/start", timeout=5)
-    except requests.exceptions.RequestException:
-        # If the network request fails for any reason, we don't want
-        # it to prevent the main job from running
-        pass
+    send_heartbeat(start=True)
 
     # init S3
-    s3 = init_s3()
+    S3_CLIENT = init_s3()
 
     # prepare gpg
     key_fingerprints = load_gpg_keys()
 
     # load the signing key
-    signing_key = get_signing_key()
+    SIGNING_KEY = get_signing_key()
 
     # Prepare discord connection
     intents = nextcord.Intents.default()
@@ -507,34 +539,21 @@ if __name__ == '__main__':
             print(f'Backing up Channel {channel.id} on {channel.guild.id}')
 
             # Backup channels
-            try:
-                last_msg_id = await get_last_message_id(channel)
-                new_last_msg_id = await backup_channel(channel, last_msg_id)
-                await set_last_message_id(channel, new_last_msg_id)
-
-            except Exception as e:
-                print(f'Unable to backup: {e}')
+            last_msg_id = await get_last_message_id(channel)
+            new_last_msg_id = await backup_channel(channel, last_msg_id)
+            await set_last_message_id(channel, new_last_msg_id)
 
             # Backup threads in channel
             for thread in channel.threads:
                 print(f'Backing up Thread {thread.id} in Channel {channel.id} on {channel.guild.id}')
 
-                try:
-                    last_msg_id = await get_last_message_id(thread)
-                    new_last_msg_id = await backup_channel(thread, last_msg_id)
-                    await set_last_message_id(thread, new_last_msg_id)
-
-                except Exception as e:
-                    print(f'Unable to backup: {e}')
+                last_msg_id = await get_last_message_id(thread)
+                new_last_msg_id = await backup_channel(thread, last_msg_id)
+                await set_last_message_id(thread, new_last_msg_id)
 
         # Quit when done
         print('Notifying the heartbeat check...')
-        try:
-            requests.get(HEARTBEAT_URL, timeout=10)
-        except requests.exceptions.RequestException:
-            # If the network request fails for any reason, we don't want
-            # it to prevent the main job from running
-            pass
+        send_heartbeat()
 
         print('Done. exiting.')
         await client.close()
