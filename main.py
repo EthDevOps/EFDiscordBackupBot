@@ -33,7 +33,7 @@ S3_ACCESS_KEY = os.getenv('S3_ACCESS_KEY')
 S3_SECRET_KEY = os.getenv('S3_SECRET_KEY')
 S3_ENDPOINT = os.getenv('S3_ENDPOINT')
 
-HEARTBEAT_URL = os.getenv('HEARTBEAT_URL ')
+HEARTBEAT_URL = os.getenv('HEARTBEAT_URL')
 
 # Prepare discord connection
 intents = nextcord.Intents.default()
