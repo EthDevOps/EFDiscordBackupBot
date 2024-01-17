@@ -36,8 +36,13 @@ jobs:
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
       - name: Analysing the code with pylint
         run: |
-          pylint main.py 
+          echo "# Test results" >> $GITHUB_STEP_SUMMARY
+
+          echo "```" >> $GITHUB_STEP_SUMMARY
+          pylint main.py >> $GITHUB_STEP_SUMMARY
+          echo "```" >> $GITHUB_STEP_SUMMARY
   test:
+    needs: lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
@@ -54,6 +59,7 @@ jobs:
         run: |
           pytest
   build:
+    needs: test
     runs-on: ubuntu-latest
     permissions:
       contents: read
