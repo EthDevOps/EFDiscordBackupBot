@@ -10,6 +10,7 @@ The following environment variables need to be set:
 - `GPG_KEY_DIR` - Directory containing the PGP/GPG public keys (see [Cryptography](#cryptography) below)
 - `SIGN_KEY_PEM` - Path to the PEM file containing the ED25519 private key used to sign each message
 - `EPHEMERAL_PATH` - working directory to use during on disk file operations
+- `HEARTBEAT_URL` - A url to ping with a `GET` request to indicate a successful backup run
 
 For enabling a S3-compatible storage backend use the following environment variables to configure:
 

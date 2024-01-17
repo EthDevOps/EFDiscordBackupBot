@@ -33,6 +33,8 @@ S3_ACCESS_KEY = os.getenv('S3_ACCESS_KEY')
 S3_SECRET_KEY = os.getenv('S3_SECRET_KEY')
 S3_ENDPOINT = os.getenv('S3_ENDPOINT')
 
+HEARTBEAT_URL = os.getenv('HEARTBEAT_URL ')
+
 # Prepare discord connection
 intents = nextcord.Intents.default()
 intents.message_content = True
@@ -482,6 +484,8 @@ async def on_ready():
                 print(f'Unable to backup: {e}')
 
     # Quit when done
+    print('Notifying the heartbeat check...')
+    requests.get(HEARTBEAT_URL)
     print('Done. exiting.')
     await client.close()
 
