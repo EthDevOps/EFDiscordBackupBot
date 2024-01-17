@@ -3,4 +3,5 @@ disable=
   C0114, # docstrings
   C0115,
   C0116,
-  C0301 #line too long
+  C0301, #line too long
+  R0912

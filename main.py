@@ -298,17 +298,22 @@ async def backup_channel(channel, last_message_id):
                 raise
 
     # pull all messages since message
-    while True:
-        messages = await channel.history(limit=100, after=after, oldest_first=True).flatten()
-        if not messages:
-            break
+    try:
+        while True:
+            messages = await channel.history(limit=100, after=after, oldest_first=True).flatten()
+            if not messages:
+                break
 
-        # Process messages
-        for message in messages:
-            backup_msg = extract_message(message)
-            write_to_storage(backup_msg)
+            # Process messages
+            for message in messages:
+                backup_msg = extract_message(message)
+                write_to_storage(backup_msg)
 
-        after = messages[-1]
+            after = messages[-1]
+    except nextcord.Forbidden:
+        print('No permission to read channel. Check roles in discord!')
+        # exit the function with no new location msg id
+        return None
 
     # Seal the manifest
     seal_manifest(channel.guild.id, channel.id)
