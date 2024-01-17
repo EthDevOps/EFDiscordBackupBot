@@ -325,8 +325,7 @@ async def backup_channel(channel, last_message_id):
 
     if after is None:
         return -1
-    else:
-        return after.id
+    return after.id
 
 
 def get_loc_path(channel):
