@@ -241,6 +241,10 @@ def seal_manifest(guild_id, channel_id):
     seal_path = manifest_path.replace('.manifest','.seal')
 
     # load the manifest contents
+    if not os.path.exists(manifest_path):
+        print(f'No manifest for {guild_id} - {channel_id}. Likly empty channel. Skipping seal.')
+        return
+
     with open(manifest_path, 'r', encoding='utf-8') as manifest:
         man_str = manifest.read()
         _, manifest_hash = hash_string(man_str)
