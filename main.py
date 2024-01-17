@@ -321,7 +321,7 @@ async def backup_channel(channel, last_message_id):
             S3_CLIENT.upload_file(manifest_path, s3_bucket(), s3_manifest_path)
             S3_CLIENT.upload_file(manifest_seal_path, s3_bucket(), s3_manifest_seal_path)
         else:
-            print(f'No manifest for {guild_id} - {channel_id}. Likly empty channel. Skipping S3 upload.')
+            print(f'No manifest for {channel.guild.id} - {channel.id}. Likly empty channel. Skipping S3 upload.')
 
     return after.id
 
