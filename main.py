@@ -551,7 +551,7 @@ if __name__ == '__main__':
 
         # Backup channels
         for channel in target_channels:
-            # Only intressted in text channels
+            # Only interested in text channels
             if not isinstance(channel, nextcord.TextChannel):
                 continue
 
@@ -560,7 +560,7 @@ if __name__ == '__main__':
             # Backup channels
             last_msg_id = await get_last_message_id(channel)
             new_last_msg_id = await backup_channel(channel, last_msg_id)
-            if last_msg_id is not None:
+            if new_last_msg_id is not None:
                 await set_last_message_id(channel, new_last_msg_id)
 
             # Backup threads in channel
