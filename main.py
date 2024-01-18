@@ -366,12 +366,17 @@ async def get_last_message_id(channel):
             last_msg_id = int(initial_content)
         except ClientError:
             print("The location is non existent on S3.")
+        except ValueError:
+            print("Non-int message id.")
 
     else:
-        if os.path.exists(loc_path):
-            with open(loc_path, 'r', encoding='utf-8') as f:
-                f_content = f.read()
-                last_msg_id = int(f_content)
+        try:
+            if os.path.exists(loc_path):
+                with open(loc_path, 'r', encoding='utf-8') as f:
+                    f_content = f.read()
+                    last_msg_id = int(f_content)
+        except ValueError:
+            print("Non-int message id.")
     return last_msg_id
 
 
