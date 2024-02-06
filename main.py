@@ -315,6 +315,14 @@ async def backup_channel(channel, last_message_id):
         # exit the function with no new location msg id
         return None
 
+    except:
+        if after is not None:
+            print('Cant pull more messages - stopping here for now.')
+            pass
+        else:
+            print('Failed channel pull - skipping')
+            return None
+
     # Seal the manifest
     seal_manifest(channel.guild.id, channel.id)
 
@@ -555,7 +563,7 @@ if __name__ == '__main__':
             if not isinstance(channel, nextcord.TextChannel):
                 continue
 
-            print(f'Backing up Channel {channel.id} on {channel.guild.id}')
+            print(f'Backing up Channel {channel.name} on {channel.guild.name}')
 
             # Backup channels
             last_msg_id = await get_last_message_id(channel)
@@ -565,7 +573,7 @@ if __name__ == '__main__':
 
             # Backup threads in channel
             for thread in channel.threads:
-                print(f'Backing up Thread {thread.id} in Channel {channel.id} on {channel.guild.id}')
+                print(f'Backing up Thread {thread.id} in Channel {channel.name} on {channel.guild.name}')
 
                 last_msg_id = await get_last_message_id(thread)
                 new_last_msg_id = await backup_channel(thread, last_msg_id)
