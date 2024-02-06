@@ -315,10 +315,9 @@ async def backup_channel(channel, last_message_id):
         # exit the function with no new location msg id
         return None
 
-    except:
+    except Exception as e:
         if after is not None:
-            print('Cant pull more messages - stopping here for now.')
-            pass
+            print(f'Cant pull more messages - stopping here for now. ERR => {e.message}')
         else:
             print('Failed channel pull - skipping')
             return None
