@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 from datetime import datetime
+import logging
 import requests
 import boto3
 import nextcord
@@ -315,9 +316,10 @@ async def backup_channel(channel, last_message_id):
         # exit the function with no new location msg id
         return None
 
-    except Exception as e:
+    except Exception as e: # pylint: disable=broad-except
+        logging.exception(e)
         if after is not None:
-            print(f'Cant pull more messages - stopping here for now. ERR => {e.message}')
+            print('Cant pull more messages - stopping here for now.')
         else:
             print('Failed channel pull - skipping')
             return None
