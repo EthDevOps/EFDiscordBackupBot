@@ -6,6 +6,7 @@ import json
 import os
 from datetime import datetime
 import logging
+import time
 import requests
 import boto3
 import nextcord
@@ -18,6 +19,7 @@ key_fingerprints = []
 gpg = GPG()
 S3_CLIENT = None
 SIGNING_KEY = None
+
 
 class ConfigurationError(Exception):
     def __init__(self, message):
@@ -559,27 +561,35 @@ if __name__ == '__main__':
         generate_directory_file(client.get_all_channels(), datetime.now())
 
         # Backup channels
+        max_attempts = 3
         for channel in target_channels:
-            # Only interested in text channels
-            if not isinstance(channel, nextcord.TextChannel):
-                continue
+            for attempt in range(1, max_attempts + 1):
+                try:
+                    # Only interested in text channels
+                    if not isinstance(channel, nextcord.TextChannel):
+                        continue
 
-            print(f'Backing up Channel {channel.name} on {channel.guild.name}')
+                    print(f'Backing up Channel {channel.name} on {channel.guild.name}')
 
-            # Backup channels
-            last_msg_id = await get_last_message_id(channel)
-            new_last_msg_id = await backup_channel(channel, last_msg_id)
-            if new_last_msg_id is not None:
-                await set_last_message_id(channel, new_last_msg_id)
+                    # Backup channels
+                    last_msg_id = await get_last_message_id(channel)
+                    new_last_msg_id = await backup_channel(channel, last_msg_id)
+                    if new_last_msg_id is not None:
+                        await set_last_message_id(channel, new_last_msg_id)
 
-            # Backup threads in channel
-            for thread in channel.threads:
-                print(f'Backing up Thread {thread.id} in Channel {channel.name} on {channel.guild.name}')
+                    # Backup threads in channel
+                    for thread in channel.threads:
+                        print(f'Backing up Thread {thread.id} in Channel {channel.name} on {channel.guild.name}')
 
-                last_msg_id = await get_last_message_id(thread)
-                new_last_msg_id = await backup_channel(thread, last_msg_id)
-                if new_last_msg_id is not None:
-                    await set_last_message_id(thread, new_last_msg_id)
+                        last_msg_id = await get_last_message_id(thread)
+                        new_last_msg_id = await backup_channel(thread, last_msg_id)
+                        if new_last_msg_id is not None:
+                            await set_last_message_id(thread, new_last_msg_id)
+                except Exception as e:  # pylint: disable=W0718
+                    wait_time = attempt * 5
+                    print(f'\tAttempt {attempt} failed ({e}), retrying in {wait_time} seconds...')
+                    time.sleep(wait_time)
+            print("\tMax retries reached. Function execution failed.")
 
         # Quit when done
         print('Notifying the heartbeat check...')
