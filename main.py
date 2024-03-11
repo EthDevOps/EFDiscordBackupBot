@@ -594,6 +594,8 @@ if __name__ == '__main__':
                     wait_time = attempt * 5
                     print(f'\tAttempt {attempt} failed ({e}), retrying in {wait_time} seconds...')
                     time.sleep(wait_time)
+                else:
+                    break
             print("\tMax retries reached. Function execution failed.")
 
         # Quit when done
