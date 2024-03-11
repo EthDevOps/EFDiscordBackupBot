@@ -596,7 +596,6 @@ if __name__ == '__main__':
                     time.sleep(wait_time)
                 else:
                     break
-            print("\tMax retries reached. Function execution failed.")
 
         # Quit when done
         print('Notifying the heartbeat check...')
