@@ -104,13 +104,18 @@ def extract_message(message):
     # process any attachments/files
     for attach in message.attachments:
         # Download file
-        resp = requests.get(attach.url, timeout=30)
-        resp.raise_for_status()
+        content = bytearray()
+        try:
+            resp = requests.get(attach.url, timeout=30)
+            resp.raise_for_status()
+            content = resp.content
+        except requests.exceptions.HTTPError:
+            print('Unable to download attachment')
 
         attachments.append({
             'type': attach.content_type,
             'origin_name': attach.filename,
-            'content': base64.b64encode(resp.content).decode()
+            'content': base64.b64encode(content).decode()
         })
 
     backup_msg = {
