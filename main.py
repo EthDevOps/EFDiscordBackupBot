@@ -285,13 +285,17 @@ async def backup_channel(channel, last_message_id):
     """
     # Load last message as a starting point
     after = None
-    if last_message_id > 0:
-        after = await channel.fetch_message(last_message_id)
+    try:
+        if last_message_id > 0:
+            after = await channel.fetch_message(last_message_id)
+    except discord.errors.NotFound:
+        print('\tLatch-on restore point vanished on discord. Doing a full grab of the channel.')
+        pass
 
     # download manifest from S3
     manifest_path, s3_manifest_path = get_manifest_path(channel.guild.id, channel.id)
 
-    if is_s3_enabled():
+    if is_s3_enabled() and after is not None:
         try:
             S3_CLIENT.head_object(Bucket=s3_bucket(), Key=s3_manifest_path)
             S3_CLIENT.download_file(Bucket=s3_bucket(),
@@ -318,17 +322,19 @@ async def backup_channel(channel, last_message_id):
                 write_to_storage(backup_msg)
 
             after = messages[-1]
+    except discord.errors.NotFound:
+       print('\tUnable to find message to latch on.')
     except nextcord.Forbidden:
-        print('No permission to read channel. Check roles in discord!')
+        print('\tNo permission to read channel. Check roles in discord!')
         # exit the function with no new location msg id
         return None
 
     except Exception as e: # pylint: disable=broad-except
         logging.exception(e)
         if after is not None:
-            print('Cant pull more messages - stopping here for now.')
+            print('\tCant pull more messages - stopping here for now.')
         else:
-            print('Failed channel pull - skipping')
+            print('\tFailed channel pull - skipping')
             return None
 
     # Seal the manifest
@@ -342,7 +348,7 @@ async def backup_channel(channel, last_message_id):
             S3_CLIENT.upload_file(manifest_path, s3_bucket(), s3_manifest_path)
             S3_CLIENT.upload_file(manifest_seal_path, s3_bucket(), s3_manifest_seal_path)
         else:
-            print(f'No manifest for {channel.guild.id} - {channel.id}. Likly empty channel. Skipping S3 upload.')
+            print(f'\tNo manifest for {channel.guild.id} - {channel.id}. Likely empty channel. Skipping S3 upload.')
 
     if after is None:
         return None
@@ -577,7 +583,9 @@ if __name__ == '__main__':
                     print(f'Backing up Channel {channel.name} on {channel.guild.name}')
 
                     # Backup channels
+                    printf('\tRetrieving last message Id')
                     last_msg_id = await get_last_message_id(channel)
+                    printf(f'\tContinue backup from last message Id: {last_msg_id}')
                     new_last_msg_id = await backup_channel(channel, last_msg_id)
                     if new_last_msg_id is not None:
                         await set_last_message_id(channel, new_last_msg_id)
