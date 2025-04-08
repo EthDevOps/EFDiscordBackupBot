@@ -583,9 +583,9 @@ if __name__ == '__main__':
                     print(f'Backing up Channel {channel.name} on {channel.guild.name}')
 
                     # Backup channels
-                    printf('\tRetrieving last message Id')
+                    print('\tRetrieving last message Id')
                     last_msg_id = await get_last_message_id(channel)
-                    printf(f'\tContinue backup from last message Id: {last_msg_id}')
+                    print(f'\tContinue backup from last message Id: {last_msg_id}')
                     new_last_msg_id = await backup_channel(channel, last_msg_id)
                     if new_last_msg_id is not None:
                         await set_last_message_id(channel, new_last_msg_id)
