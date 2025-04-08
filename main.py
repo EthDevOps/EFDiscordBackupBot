@@ -288,7 +288,7 @@ async def backup_channel(channel, last_message_id):
     try:
         if last_message_id > 0:
             after = await channel.fetch_message(last_message_id)
-    except discord.errors.NotFound:
+    except nextcord.NotFound:
         print('\tLatch-on restore point vanished on discord. Doing a full grab of the channel.')
         pass
 
@@ -322,7 +322,7 @@ async def backup_channel(channel, last_message_id):
                 write_to_storage(backup_msg)
 
             after = messages[-1]
-    except discord.errors.NotFound:
+    except nextcord.NotFound:
        print('\tUnable to find message to latch on.')
     except nextcord.Forbidden:
         print('\tNo permission to read channel. Check roles in discord!')
