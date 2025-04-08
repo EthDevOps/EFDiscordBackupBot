@@ -179,7 +179,6 @@ def write_to_storage(backup_msg):
         msg_path = os.path.join(get_ephemeral_path(), f'{enc_hash_str}.msg')
         with open(msg_path,'w', encoding='utf-8') as msg_file:
             msg_file.write(str(enc_msg))
-    print(f'Message written: {enc_hash_str}')
 
 
 def get_signing_key():
