@@ -9,6 +9,14 @@
       "allowed_categories": ["public", "governance"],
       "excluded_channels": ["mod-chat"],
       "include_attachments": true
+    },
+    "9999999999999999999": {
+      "enabled": true,
+      "repo_url": "https://github.com/org/another-archive.git",
+      "branch": "main",
+      "allowed_categories": [],
+      "excluded_channels": [],
+      "include_attachments": true
     }
   }
 }

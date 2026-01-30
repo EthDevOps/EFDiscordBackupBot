@@ -618,6 +618,9 @@ if __name__ == '__main__':
                         new_last_msg_id = await backup_channel(thread, last_msg_id)
                         if new_last_msg_id is not None:
                             await set_last_message_id(thread, new_last_msg_id)
+                except nextcord.Forbidden as e:
+                    print(f'\tAccess denied ({e}), skipping channel.')
+                    break
                 except Exception as e:  # pylint: disable=W0718
                     wait_time = attempt * 5
                     print(f'\tAttempt {attempt} failed ({e}), retrying in {wait_time} seconds...')

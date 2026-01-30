@@ -121,7 +121,7 @@ class GitArchiveManager:
         if channel.name in excluded_channels:
             return False
 
-        # Check allowed categories
+        # Check allowed categories (empty list = all categories allowed)
         allowed_categories = server_config.get('allowed_categories', [])
         if allowed_categories:
             category_name = channel.category.name if channel.category else None
