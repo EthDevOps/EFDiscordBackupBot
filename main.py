@@ -138,7 +138,7 @@ def extract_message(message):
             'id': message.channel.id,
             'name': message.channel.name,
         },
-        'category': message.channel.category.name,
+        'category': message.channel.category.name if message.channel.category else '',
         'parent': parent,
         'content': message.content,
         'created_at': message.created_at.isoformat(),

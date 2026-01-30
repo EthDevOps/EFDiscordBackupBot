@@ -13,6 +13,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
+import nextcord
 from git import Repo
 from git.exc import GitCommandError
 
@@ -240,14 +241,25 @@ class GitArchiveManager:
             return
 
         repo_path = Path(self._get_repo_path(server_id))
-        channel_name = channel.name
 
-        # Sanitize channel name for filesystem
-        safe_channel_name = "".join(
-            c if c.isalnum() or c in '-_' else '_' for c in channel_name
-        )
+        # Sanitize name for filesystem (preserve emojis, block problematic chars)
+        def sanitize_name(name: str) -> str:
+            unsafe_chars = '/\\:*?"<>|'
+            return "".join(
+                c if c not in unsafe_chars and c.isprintable() else '_' for c in name
+            )
 
-        channel_dir = repo_path / safe_channel_name
+        # Check if this is a thread and adjust directory structure
+        is_thread = isinstance(channel, nextcord.Thread)
+        if is_thread:
+            parent_name = channel.parent.name
+            safe_parent_name = sanitize_name(parent_name)
+            safe_thread_name = sanitize_name(channel.name)
+            channel_dir = repo_path / safe_parent_name / '_threads' / safe_thread_name
+        else:
+            safe_channel_name = sanitize_name(channel.name)
+            channel_dir = repo_path / safe_channel_name
+
         attachments_dir = channel_dir / 'attachments'
 
         # Group messages by date
@@ -274,8 +286,14 @@ class GitArchiveManager:
             if new_count > 0:
                 date_range.append(date_str)
 
+        # Build display name for logging
+        if is_thread:
+            display_name = f"{channel.parent.name}/{channel.name} (thread)"
+        else:
+            display_name = channel.name
+
         if total_new == 0:
-            print(f'\t[Git Archive] [{server_id}] No new messages to commit for #{channel_name}')
+            print(f'\t[Git Archive] [{server_id}] No new messages to commit for #{display_name}')
             return
 
         # Stage all changes
@@ -283,7 +301,7 @@ class GitArchiveManager:
 
         # Check if there are staged changes
         if not repo.is_dirty(index=True):
-            print(f'\t[Git Archive] [{server_id}] No changes to commit for #{channel_name}')
+            print(f'\t[Git Archive] [{server_id}] No changes to commit for #{display_name}')
             return
 
         # Create commit message
@@ -293,7 +311,7 @@ class GitArchiveManager:
         else:
             date_info = f"{date_range[0]} to {date_range[-1]}"
 
-        commit_message = f"Archive {total_new} messages from #{channel_name} ({date_info})"
+        commit_message = f"Archive {total_new} messages from #{display_name} ({date_info})"
         print(f'\t[Git Archive] [{server_id}] {commit_message}')
 
         repo.index.commit(commit_message)
@@ -301,7 +319,7 @@ class GitArchiveManager:
         # Push changes
         try:
             repo.remotes.origin.push()
-            print(f'\t[Git Archive] [{server_id}] Pushed changes for #{channel_name}')
+            print(f'\t[Git Archive] [{server_id}] Pushed changes for #{display_name}')
         except GitCommandError as e:
             print(f'\t[Git Archive] [{server_id}] Warning: Could not push: {e}')
 
