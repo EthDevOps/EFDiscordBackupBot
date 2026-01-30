@@ -1,0 +1,14 @@
+{
+  "default_branch": "main",
+  "commit_batch_size": 50,
+  "servers": {
+    "1194636226041479298": {
+      "enabled": true,
+      "repo_url": "https://github.com/org/server-archive.git",
+      "branch": "main",
+      "allowed_categories": ["public", "governance"],
+      "excluded_channels": ["mod-chat"],
+      "include_attachments": true
+    }
+  }
+}

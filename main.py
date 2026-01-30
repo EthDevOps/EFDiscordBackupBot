@@ -15,7 +15,13 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ed25519
 from gnupg import GPG
 
+try:
+    from git_archive import init_git_archive
+except ImportError:
+    init_git_archive = None
+
 key_fingerprints = []
+git_manager = None
 gpg = GPG()
 S3_CLIENT = None
 SIGNING_KEY = None
@@ -308,6 +314,9 @@ async def backup_channel(channel, last_message_id):
                 # Something else has gone wrong.
                 raise
 
+    # Check if git archive should be used for this channel
+    should_git_archive = git_manager and git_manager.should_archive_channel(channel)
+
     # pull all messages since message
     try:
         while True:
@@ -319,6 +328,10 @@ async def backup_channel(channel, last_message_id):
             for message in messages:
                 backup_msg = extract_message(message)
                 write_to_storage(backup_msg)
+
+                # Git archive (parallel to S3)
+                if should_git_archive:
+                    git_manager.queue_message(backup_msg, channel)
 
             after = messages[-1]
     except nextcord.NotFound:
@@ -335,6 +348,10 @@ async def backup_channel(channel, last_message_id):
         else:
             print('\tFailed channel pull - skipping')
             return None
+
+    # Flush git archive before sealing manifest
+    if should_git_archive:
+        await git_manager.flush_and_commit(channel)
 
     # Seal the manifest
     seal_manifest(channel.guild.id, channel.id)
@@ -548,6 +565,10 @@ if __name__ == '__main__':
 
     # load the signing key
     SIGNING_KEY = get_signing_key()
+
+    # init git archive (optional, parallel to S3)
+    if init_git_archive is not None:
+        git_manager = init_git_archive()
 
     # Prepare discord connection
     intents = nextcord.Intents.default()
