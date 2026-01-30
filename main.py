@@ -600,7 +600,7 @@ if __name__ == '__main__':
                     if not isinstance(channel, nextcord.TextChannel):
                         continue
 
-                    print(f'Backing up Channel {channel.name} on {channel.guild.name}')
+                    print(f'[{channel.guild.id}] Backing up Channel {channel.name} on {channel.guild.name}')
 
                     # Backup channels
                     print('\tRetrieving last message Id')
@@ -612,7 +612,7 @@ if __name__ == '__main__':
 
                     # Backup threads in channel
                     for thread in channel.threads:
-                        print(f'Backing up Thread {thread.id} in Channel {channel.name} on {channel.guild.name}')
+                        print(f'[{channel.guild.id}] Backing up Thread {thread.id} in Channel {channel.name} on {channel.guild.name}')
 
                         last_msg_id = await get_last_message_id(thread)
                         new_last_msg_id = await backup_channel(thread, last_msg_id)

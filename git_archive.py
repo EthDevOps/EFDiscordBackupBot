@@ -93,15 +93,15 @@ class GitArchiveManager:
 
         if os.path.exists(repo_path):
             # Repo exists, open and pull
-            print(f'\t[Git Archive] Opening existing repo at {repo_path}')
+            print(f'\t[Git Archive] [{server_id}] Opening existing repo at {repo_path}')
             repo = Repo(repo_path)
             try:
                 repo.remotes.origin.pull()
             except GitCommandError as e:
-                print(f'\t[Git Archive] Warning: Could not pull: {e}')
+                print(f'\t[Git Archive] [{server_id}] Warning: Could not pull: {e}')
         else:
             # Clone the repo
-            print(f'\t[Git Archive] Cloning {repo_url} to {repo_path}')
+            print(f'\t[Git Archive] [{server_id}] Cloning {repo_url} to {repo_path}')
             os.makedirs(repo_path, exist_ok=True)
             repo = Repo.clone_from(auth_url, repo_path, branch=branch)
 
@@ -275,7 +275,7 @@ class GitArchiveManager:
                 date_range.append(date_str)
 
         if total_new == 0:
-            print(f'\t[Git Archive] No new messages to commit for #{channel_name}')
+            print(f'\t[Git Archive] [{server_id}] No new messages to commit for #{channel_name}')
             return
 
         # Stage all changes
@@ -283,7 +283,7 @@ class GitArchiveManager:
 
         # Check if there are staged changes
         if not repo.is_dirty(index=True):
-            print(f'\t[Git Archive] No changes to commit for #{channel_name}')
+            print(f'\t[Git Archive] [{server_id}] No changes to commit for #{channel_name}')
             return
 
         # Create commit message
@@ -294,16 +294,16 @@ class GitArchiveManager:
             date_info = f"{date_range[0]} to {date_range[-1]}"
 
         commit_message = f"Archive {total_new} messages from #{channel_name} ({date_info})"
-        print(f'\t[Git Archive] {commit_message}')
+        print(f'\t[Git Archive] [{server_id}] {commit_message}')
 
         repo.index.commit(commit_message)
 
         # Push changes
         try:
             repo.remotes.origin.push()
-            print(f'\t[Git Archive] Pushed changes for #{channel_name}')
+            print(f'\t[Git Archive] [{server_id}] Pushed changes for #{channel_name}')
         except GitCommandError as e:
-            print(f'\t[Git Archive] Warning: Could not push: {e}')
+            print(f'\t[Git Archive] [{server_id}] Warning: Could not push: {e}')
 
 
 def is_git_archive_enabled() -> bool:
@@ -334,6 +334,15 @@ def init_git_archive() -> Optional[GitArchiveManager]:
     try:
         config = GitArchiveConfig(config_path)
         print('[Git Archive] Initialized successfully')
+
+        # Print configured servers and their repos
+        servers = config.config.get('servers', {})
+        for server_id, server_config in servers.items():
+            enabled = server_config.get('enabled', False)
+            repo_url = server_config.get('repo_url', 'N/A')
+            status = 'enabled' if enabled else 'disabled'
+            print(f'[Git Archive]   Server {server_id}: {repo_url} ({status})')
+
         return GitArchiveManager(config, clone_path, github_token)
     except FileNotFoundError as e:
         print(f'[Git Archive] Warning: {e}')
